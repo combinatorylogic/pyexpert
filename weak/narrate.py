@@ -5,8 +5,10 @@ from weak.prolog_ast import *
 def narrate_mklist(l: [ASTNode]) -> ASTNode:
     if len(l)>1:
         return ast_mk_struct_ar("cons", [l[0], narrate_mklist(l[1:])])
-    else:
+    elif len(l)>0:
         return ast_mk_struct_ar("cons", [l[0], ast_mk_struct_ar("nil",[])])
+    else:
+        return ast_mk_struct_ar("nil",[])
 
 
 def insert_narrate(pd: dict, p: ASTNode) -> ASTNode:
