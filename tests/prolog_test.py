@@ -1,4 +1,4 @@
-from weak.prolog import prolog_driver,prolog_default_env,prolog_next_solution,prolog_core_library
+from weak.prolog import prolog_driver,prolog_default_env,prolog_next_solution
 from weak.narrate import narrate_predicates
 
 def test():
@@ -23,7 +23,6 @@ def test():
 
     query6 = '? weak(nil, N),  ntest(N, aaa, bbb), weak_to_list(N, L), debrief(L,LL), printlist(LL, X), print(X).'
     env = prolog_default_env()
-    prolog_driver(env, prolog_core_library)
     prolog_driver(env, lib, [narrate_predicates])
     ret,vars = prolog_driver(env, query1)
     assert(ret)

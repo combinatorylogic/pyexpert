@@ -1,10 +1,8 @@
-from weak.prolog import prolog_driver,prolog_default_env,prolog_next_solution,prolog_core_library
+from weak.prolog import prolog_driver, prolog_default_env, prolog_next_solution
 from weak.narrate import narrate_predicates
 
 # Initialise environment
 env = prolog_default_env()
-# Compile the core library
-prolog_driver(env, prolog_core_library)
 
 # An example taken from D. Merritt, 'Building Expert Systems in Prolog', 1989.
 rules = '''
@@ -38,7 +36,7 @@ prolog_driver(env, rules, [narrate_predicates])
 prolog_driver(env, facts, [narrate_predicates])
 
 # Execute query
-prolog_driver(env, '? bird(N, X), explain(N).')
+prolog_driver(env, '? bird(N, X), explain(N,LL), printlist(LL, MM), print(MM).')
 
 # Inspect all the remaining solutions
 while prolog_next_solution(env):

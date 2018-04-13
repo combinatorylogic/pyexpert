@@ -45,6 +45,14 @@ def insert_narrate(pd: dict, p: ASTNode) -> ASTNode:
     return p
 
 def narrate_predicates(prs: [ASTNode]) -> [ASTNode]:
+    """
+    Rewrite Prolog rules, instrumenting them with narration.
+    Only the rules in prs will be rewritten, therewore if there are rules to be added later, there must be stubs
+    for them defined in prs.
+
+    :param prs: list of ASTNodes
+    :return: a list of instrumented ASTNodes
+    """
     pd = {}
     for pr in prs:
         if pr._tag == 'top':

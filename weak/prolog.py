@@ -767,21 +767,56 @@ def prolog_driver(env: PrologEnv, code: str, instrument = []) -> (bool, dict):
         ast1 = i(ast1)
     return prolog_driver_ast(env, ast1)
 
+
 # We can trigger a failure in order to explore the next possible solution.
 def prolog_next_solution(env: PrologEnv) -> bool:
-    '''
+    """
     Fail the current state of a given runtime environment and attempt to find another solution.
     :param env: Prolog runtime environment
     :return: True if there is a solution
-    '''
+    """
     return prolog_mini_cps(prolog_failure_f(env))
 
 
-def prolog_default_env() -> PrologEnv:
+def prolog_to_list(ap,l):
+    """
+    Convert a Prolog list (i.e., nested cons/2 and nil/0 terms) into nested Python lists,
+    ignoring the dotted pairs (cons/2 cells where second argument is not a cons/2 cell or nil/0).
+
+    Must be called as 'prolog_to_list(None, prolog_list)'
+    :param ap: None
+    :param l: Prolog list
+    :return:  Python list
+    """
+    # prolog_deref(...) returns an actual value of a Prolog memory cell (which can be accessible via a long chain of
+    # references).
+    w = prolog_deref(l)
+    if (prolog_is_struct(w)): # Both cons/2 and nil/0 are 'struct' type cells
+        if w._id == 'cons/2':
+            if (ap is None):  # We're starting a new Python list
+                l = []
+                l.append(prolog_to_list(None, w._args[0]))
+                prolog_to_list(l, w._args[1])
+                return l
+            else: # Keep appending to an existing Python list
+                ap.append(prolog_to_list(None, w._args[0]))
+                prolog_to_list(ap, w._args[1])
+                return ap
+        elif w._id == 'nil/0':
+            return []
+    else:
+        # Any other kind of a Prolog cell is just represented as a string
+        return str(l)
+
+
+def prolog_default_env(library = None) -> PrologEnv:
     '''
     Make a Prolog runtime environment and populate it with some essential primitives (cut, fail, call, ...)
+    :param library: optionally, a string containing a core library to be used. If none, the default one is compiled.
     :return: an environment
     '''
+
+    global prolog_core_library
 
     # Debugging output primitive
     def prolog_print_fun(env, cnt, x):
@@ -827,6 +862,22 @@ def prolog_default_env() -> PrologEnv:
             for (na, a) in zip(fargs, dt._args):
                 varenv._args[na] = a
             return lambda: fn(varenv)
+
+    def prolog_call2_fun(env, cnt, nd, a1, a2):
+        dt = prolog_deref(nd)
+        newid = ""
+        if (prolog_is_struct(dt)):
+            newid = dt._id.split("/")[0] + "/2"
+        elif (prolog_is_const(dt)):
+            newid = dt._val + "/2"
+        else:
+            return prolog_failure_f(env)
+
+        fn, fargs = env._preds[newid]
+        varenv = prolog_new_varenv(env, cnt)
+        for (na, a) in zip(fargs, [a1,a2]):
+            varenv._args[na] = a
+        return lambda: fn(varenv)
 
     def prolog_concat3_fun(env, cnt, s1, s2, r):
         ds1 = prolog_deref(s1)
@@ -878,9 +929,14 @@ def prolog_default_env() -> PrologEnv:
     prolog_define_primitive(env, "weak/2", ["V", "D"], prolog_weak_fun)
     prolog_define_primitive(env, "weak/1", ["D"], prolog_weak1_fun)
     prolog_define_primitive(env, "call/1", ["S"], prolog_call1_fun)
+    prolog_define_primitive(env, "call2/3", ["S","A1","A2"], prolog_call2_fun)
     prolog_define_primitive(env, "concat/3", ["S1", "S2", "R"], prolog_concat3_fun)
     prolog_define_primitive(env, "str/2", ["S1", "R"], prolog_str2_fun)
     prolog_define_primitive(env, "weak_to_list/2", ["W", "L"], prolog_weak2l_fun)
+
+    if library is None:
+        prolog_driver(env, prolog_core_library)
+
     return env
 
 
@@ -932,11 +988,13 @@ prolog_core_library = """
    debrief(X, X) :- !.
 
    // Report a list-form of a narration
-   explain(N) :-
+   explain(N, LL) :-
       weak_to_list(N, L), 
-      debrief(L, LL), 
-      printlist(LL, MM), 
-      print(MM).
+      debrief(L, LL).
+      
+   // A generic map
+   map(Fn, [], []) :- !.
+   map(Fn, [H|T], [Rh|Rt]) :- call2(Fn, H, Rh), map(Fn, T, Rt).
 
   """
 

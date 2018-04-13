@@ -14,8 +14,6 @@ from weak.prolog import prolog_driver,prolog_default_env,prolog_next_solution,pr
 
 # Initialise environment
 env = prolog_default_env()
-# Compile the core library
-prolog_driver(env, prolog_core_library)
 
 # Execute query
 ret,vars = prolog_driver(env, '? append(A, B, [x,y]).')
