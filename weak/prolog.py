@@ -215,6 +215,7 @@ class PrologEnv:
     def __init__(self):
         self._chpoint = ChoicePoint(self)
         self._preds = {}
+        self._collapsed = {}
 
 # Store a variable cell in the current choice point kill list
 def prolog_remember_cell(env: PrologEnv, r):
@@ -720,6 +721,11 @@ def prolog_lower_tops(tops):
 #    names, execute the function directly with prepared variable cell arguments and
 #    bind them to a dictionary using their names.
 #  - Otherwise just compile the predicate definitions and store them in the environment.
+
+class Prolog_suspend:
+    def __init__(self, v):
+        self.v = v
+
 def prolog_driver_ast(env: PrologEnv, tops) -> (bool, dict):
     '''
     Refine, compile, pre-compile and run a list of Prolog predicates. Run only if a list
@@ -741,6 +747,8 @@ def prolog_driver_ast(env: PrologEnv, tops) -> (bool, dict):
             ve._args[a] = prolog_mk_var()
         fn = vexpr(ve)
         ret = prolog_mini_cps(fn)
+        if isinstance(ret, Prolog_suspend):
+            return False, ret
         if ret:
             argvals = {}
             for a,n in zip(args,range(len(args))):
@@ -777,6 +785,8 @@ def prolog_next_solution(env: PrologEnv) -> bool:
     """
     return prolog_mini_cps(prolog_failure_f(env))
 
+def prolog_resume(suspend):
+    return prolog_mini_cps(suspend.v)
 
 def prolog_to_list(ap,l):
     """
@@ -808,7 +818,66 @@ def prolog_to_list(ap,l):
         # Any other kind of a Prolog cell is just represented as a string
         return str(l)
 
+# Make a copy of a Prolog data structure, removing all references and making a new set of variables
+def prolog_collapse_struct(visited, v0):
+    v = prolog_deref(v0)
+    if id(v) in visited:
+        return visited[id(v)]
+    nv = None
+    if prolog_is_struct(v):
+        nargs = [prolog_collapse_struct(visited, a) for a in v._args]
+        nv = prolog_mk_struct(v._id, nargs)
+    elif prolog_is_const(v):
+        nv = v
+    elif prolog_is_var(v):
+        nv = prolog_mk_var()
+    visited[id(v)] = nv
+    return nv
 
+def prolog_shallow_list(src):
+    r = prolog_mk_cons_cell()
+    cur = r
+    for i in src:
+        prolog_cons_sethead(cur, i)
+        tmp  = prolog_mk_cons_cell()
+        prolog_cons_settail(cur, tmp)
+        cur = tmp
+    prolog_cons_setnil(cur)
+    return r
+
+def prolog_topmost_choice_point(env, cont):
+    chp = ChoicePoint(env)
+    chp._cnts = [cont]
+    ex = env._chpoint
+    while ex._prev:
+        ex = ex._prev
+    ex._prev = chp
+    chp._vars = []
+    ex._vars = []
+
+def prolog_collapse_cnt(env, cnt, dst):
+    def fn(env, xcont):
+        ndsts = env._collapsed[id(dst)]
+        out = prolog_shallow_list(ndsts)
+        if prolog_unify(env, out, dst):
+            return lambda: cnt(env)
+        else:
+            return prolog_failure_f(env)
+    return fn
+    
+# Collapse all variants of src into a list, leave no possible next solutions
+def prolog_collapse_fun(env, cnt, src, dst):
+    if id(dst) in env._collapsed:
+        ndst = prolog_collapse_struct({}, src)
+        env._collapsed[id(dst)].append(ndst)
+        return prolog_failure_f(env)
+    else:
+        env._collapsed[id(dst)] = []
+        ndst = prolog_collapse_struct({}, src)
+        env._collapsed[id(dst)].append(ndst)
+        prolog_topmost_choice_point(env, prolog_collapse_cnt(env, cnt, dst))
+        return prolog_failure_f(env)
+    
 def prolog_default_env(library = None) -> PrologEnv:
     '''
     Make a Prolog runtime environment and populate it with some essential primitives (cut, fail, call, ...)
@@ -933,12 +1002,49 @@ def prolog_default_env(library = None) -> PrologEnv:
     prolog_define_primitive(env, "concat/3", ["S1", "S2", "R"], prolog_concat3_fun)
     prolog_define_primitive(env, "str/2", ["S1", "R"], prolog_str2_fun)
     prolog_define_primitive(env, "weak_to_list/2", ["W", "L"], prolog_weak2l_fun)
+    prolog_define_primitive(env, "collapse/2", ["Src", "Dst"], prolog_collapse_fun)
 
     if library is None:
         prolog_driver(env, prolog_core_library)
 
     return env
 
+def mkcpsfun(env, nxt):
+    def c():
+        v = prolog_mini_cps(nxt)
+        if isinstance(v, Prolog_suspend):
+            env.globquery[0] = mkcpsfun(env, v.v)
+        else:
+            env.globquery[0] = lambda: None
+    return c
+    
+
+def prolog_ask_fun(env, cnt, msg, options, dst):
+    keyd = str(prolog_deref(msg))
+    msgd = str(prolog_deref(msg))
+    opts = prolog_to_list(None,prolog_deref(options))
+    dst = prolog_deref(dst)
+    
+    def contfun():
+        if keyd in env.globanswers:
+            answ = prolog_mk_const(env.globanswers[keyd])
+            if (prolog_unify(env, dst, answ)):
+                return lambda: cnt(env)
+            else:
+                return prolog_failure_f(env)
+        else:
+            env.globquery[0] = mkcpsfun(env, contfun)
+            env.display_fun(keyd, msgd, opts)
+            return Prolog_suspend(contfun)
+    return contfun()
+
+
+def prolog_register_ask(env, answers, query, display_fun):
+    prolog_define_primitive(env, "ask/3", ["Msg","Options", "Dst"],
+                            prolog_ask_fun)
+    env.globanswers = answers
+    env.globquery = query
+    env.display_fun = display_fun
 
 # A library of essential functions for Prolog, implemented in core Prolog:
 prolog_core_library = """
@@ -996,5 +1102,14 @@ prolog_core_library = """
    map(Fn, [], []) :- !.
    map(Fn, [H|T], [Rh|Rt]) :- call2(Fn, H, Rh), map(Fn, T, Rt).
 
-  """
+   // Tree merge
+   treemerge([ [[Tg|Args]|TailA] | NextA], [ [[Tg|Args]|TailB] | NextB],
+             [ [[Tg|Args]|TailAB] | NextAB]) :- !, treemerge(TailA, TailB, TailAB), treemerge(NextA, NextB, NextAB).
+   treemerge(A, B, R) :- !, append(A, B, R).
 
+   foldmerge([A], [A]).
+   foldmerge([A, B | Next], R) :- !, treemerge([A], [B], [AB]), foldmerge([AB | Next], R).
+
+   
+
+  """
