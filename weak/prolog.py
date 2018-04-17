@@ -287,13 +287,12 @@ class VarEnv:
     def __init__(self, env, cont):
         self._env = env
         self._cont = cont
-        self._vars = {}
+        self._vars = []
         self._args = {}
     
 # The following functions are primitives used by the compiler above.
 def prolog_int_intros(varenv: VarEnv, nvars, nxt):
-    for n in range(nvars):
-        varenv._vars[n] = prolog_mk_var()
+    varenv._vars = [prolog_mk_var() for n in range(nvars)]
     return nxt(varenv)
 
 def prolog_int_unify(varenv: VarEnv, va, vb, nxt):
@@ -363,12 +362,35 @@ def prolog_int_choice_point(varenv: VarEnv, vconts):
 #  a continuation, to make this interpreter work together with the execution
 #  primitives defined above.
 #
+def prolog_attempt_const_struct_inner(expr):
+    if expr._tag == 'var' or expr._tag == 'arg':
+        raise ValueError('var')
+    if expr._tag == 'new':
+        return prolog_mk_struct(expr._id,
+                                [prolog_attempt_const_struct_inner(c)
+                                 for c in expr._args])
+    if expr._tag == 'const':
+        return prolog_mk_const(expr._val)
+    else:
+        raise ValueError("...")
+
+def prolog_attempt_const_struct(expr):
+    try:
+        return prolog_attempt_const_struct_inner(expr)
+    except ValueError:
+        return None
+
 def prolog_compile_ctor(cenv, expr):
+    cstruct = prolog_attempt_const_struct(expr)
+    if cstruct:
+        return lambda varenv: cstruct
+    
     if expr._tag == 'new':
         cargs = [prolog_compile_ctor(cenv, a) for a in expr._args]
         return lambda varenv: prolog_mk_struct(expr._id, [c(varenv) for c in cargs])
     elif expr._tag == 'const':
-        return lambda varenv: prolog_mk_const(expr._val)
+        c = prolog_mk_const(expr._val)
+        return lambda varenv: c
     elif expr._tag == 'var':
         (aenv, venv, nv) = cenv
         vnum = venv[expr._name]
