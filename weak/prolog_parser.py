@@ -21,15 +21,12 @@ def plgeq():        return plgxterm, "=", plgxterm
 def plgstruct():    return plgident, [ ("(", ")"),
                                        ("(", plgterm, ZeroOrMore(",", plgterm), ")") ]
 def plgnil():       return "[","]"
-def plglistapp():   return plgterm,",",plglistbody
-def plglistcons():  return plgterm,"|",plgterm
-def plglast():      return plgterm
-def plglistbody():  return [plglistapp,  plglistcons, plglast]
-def plglist():      return [plgnil, ("[",plglistbody,"]")]
+def plglist():      return "[", plgterm, ZeroOrMore([",","|"], plgterm), "]"
+
 def plgvar():       return _(r"[A-Z]\w*")
 def plgident():     return _(r"[a-z]\w*")
 def plgconst():     return [plgnumber, plgstring, plgident]
-def plgterm():      return [plgeq, plgcut, plglist, plgstruct, plgvar, plgconst]
+def plgterm():      return [plgeq, plgcut, plgnil, plglist, plgstruct, plgvar, plgconst]
 def plgxterm():     return [plglist, plgstruct, plgvar, plgconst]
 def plgfact():      return plgstruct, "."
 def plgpred():      return plgstruct, ":-", plgterm, ZeroOrMore(",", plgterm), "."
@@ -40,6 +37,29 @@ def prolog():       return OneOrMore(plgtoplevel), EOF
 prolog_parser = ParserPython(prolog, plgcomment)
 
 # Convert the Arpreggio internal AST into our simple AST
+def decode_list(ch):
+    tp = ast_mk_struct_ar("cons", [None, None])
+    cur = tp
+    state = 0
+    for c in ch:
+        if state == 0:
+            cur._args[0] = c
+            state = 1
+        elif state == 2:
+            cur._args[1] = c
+            state = 3
+        elif state == 1:
+            if c == ',':
+                cur._args[1] = ast_mk_struct_ar("cons", [None, None])
+                cur = cur._args[1]
+                state = 0
+            elif c == '|':
+                state = 2
+    if state == 1:
+        cur._args[1] = ast_mk_struct_ar("nil", [])
+    return tp
+            
+
 class PlgVisitor(PTNodeVisitor):
     def visit_prolog(self, node, ch):      return ch
     def visit_plgpred(self, node, ch):     return ast_mk_top(ch[0], ch[1:])
@@ -53,13 +73,9 @@ class PlgVisitor(PTNodeVisitor):
     def visit_plgstruct(self, node, ch):   return ast_mk_struct_ar(ch[0], ch[1:])
     def visit_plgeq(self, node, ch):       return ast_mk_struct_ar("equals", [ch[0], ch[1]])
     def visit_plgcut(self, node, ch):      return ast_mk_struct_ar("cut",[])
-    def visit_plglist(self,node,ch):       return ch[0]
+    def visit_plglist(self,node,ch):       return decode_list(ch)
     def visit_plglistbody(self,node,ch):   return ch[0]
     def visit_plgnil(self,node,ch):        return ast_mk_struct_ar("nil",[])
-    def visit_plglistcons(self,node,ch):   return ast_mk_struct_ar("cons",[ch[0],ch[1]])
-    def visit_plglistapp(self,node,ch):    return ast_mk_struct_ar("cons",[ch[0],ch[1]])
-    def visit_plglast(self,node,ch):
-        return ast_mk_struct_ar("cons",[ch[0],ast_mk_struct_ar("nil",[])])
     def visit_plgterm(self, node, ch):
         if len(ch)>0:
             return ch[0]
