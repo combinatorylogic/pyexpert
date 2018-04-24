@@ -1,6 +1,6 @@
 # Instrument a given predicate with narration
 
-from weak.prolog_ast import *
+from pyexpert.prolog_ast import *
 
 def narrate_mklist(l: [ASTNode]) -> ASTNode:
     if len(l)>1:

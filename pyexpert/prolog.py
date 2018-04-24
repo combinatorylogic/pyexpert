@@ -1,6 +1,6 @@
 import types
-from weak.prolog_ast import *
-import weak.prolog_parser
+from pyexpert.prolog_ast import *
+import pyexpert.prolog_parser
 
 ##
 ## Introduction.
@@ -792,7 +792,7 @@ def prolog_driver(env: PrologEnv, code: str, instrument = []) -> (bool, dict):
     :param code: Prolog code in a default syntax
     :return: (answer, variables)
     '''
-    ast1 = weak.prolog_parser.parse(code)
+    ast1 = pyexpert.prolog_parser.parse(code)
     for i in instrument:
         ast1 = i(ast1)
     return prolog_driver_ast(env, ast1)

@@ -10,7 +10,7 @@ from arpeggio import Optional, ZeroOrMore, OneOrMore, EOF,PTNodeVisitor, visit_p
 from arpeggio import RegExMatch as _
 from arpeggio import ParserPython
 
-from weak.prolog_ast import *
+from pyexpert.prolog_ast import *
 
 # Note that only C-style comments are supported here:
 def plgcomment():   return [_("//.*"), _("/\*.*\*/")]
