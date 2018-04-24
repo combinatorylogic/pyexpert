@@ -1129,8 +1129,10 @@ prolog_core_library = """
              [ [[Tg|Args]|TailAB] | NextAB]) :- !, treemerge(TailA, TailB, TailAB), treemerge(NextA, NextB, NextAB).
    treemerge(A, B, R) :- !, append(A, B, R).
 
+   foldmerge([], []).
    foldmerge([A], [A]).
-   foldmerge([A, B | Next], R) :- !, treemerge([A], [B], [AB]), foldmerge([AB | Next], R).
+   foldmerge([A, B | Next], R) :- treemerge([A], [B], [AB]), foldmerge([AB | Next], R).
+   foldmerge([A, B | Next], R) :- foldmerge([B | Next], Rx), append([A], Rx, R).
 
    
 

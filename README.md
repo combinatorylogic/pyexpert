@@ -47,3 +47,4 @@ producing execution traces, or a "narration", which can then be used to
 generate, for example, a plain English narration of the expert system thought
 process.
 
+See `tests/demo.py` for an example of constructing an explainable expert system.
