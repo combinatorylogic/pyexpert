@@ -61,7 +61,16 @@ prolog_driver(env, rules, [narrate_predicates])
 prolog_driver(env, facts, [narrate_predicates])
 prolog_driver(env, fmtrules)
 
-# Execute query
+# Execute query:
+# N - decision tree in an internal format (using weak sets)
+# LL - decision tree in a convenient list format
+# LL1 - all possible values of decision tree
+# LL2 - a naive attempt to merge similar decision trees
+# LX - an English narration in a list format
+# Result - an assembled single string with an English narration
+#
+# Note that all the variables that got unified before 'collapse' will be invalidated.
+#
 ret, vars = prolog_driver(env,
     '''? bird(N, X), explain(N,[LL]), collapse(LL,LL1),
          foldmerge(LL1, LL2), map(narrate_birds, LL2, LX),
